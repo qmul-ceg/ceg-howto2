@@ -1,6 +1,3 @@
----
-share: "true"
----
 ## Clone a Repo
 Navigate to, or make, the parent folder in which you want the repo folder 
 `cd ~/github/projects` OR `mkdir ~/github/projects`
