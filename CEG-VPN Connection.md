@@ -1,3 +1,6 @@
+---
+share: true
+---
 # Connect to CEG-VPN
 ## OpenVPN GUI
 - Right-click the OpenVPN tray icon and click *Connect*.
