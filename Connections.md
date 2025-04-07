@@ -1,51 +1,98 @@
-## User Logins to Server
-Current active logins, including IP and encryption, are shown in the openvpn-status.log
-```
-sudo cat /var/log/openvpn/openvpn-status.log
-```
-The assigned IPs are listed in ipp.txt.
-```
-sudo cat /var/log/openvpn/ipp.txt
+# connection info
+## Server Information
+```SQL
+SELECT  
+   CONNECTIONPROPERTY('net_transport') AS net_transport,
+   CONNECTIONPROPERTY('protocol_type') AS protocol_type,
+   CONNECTIONPROPERTY('auth_scheme') AS auth_scheme,
+   CONNECTIONPROPERTY('local_net_address') AS local_net_address,
+   CONNECTIONPROPERTY('local_tcp_port') AS local_tcp_port,
+   CONNECTIONPROPERTY('client_net_address') AS client_net_address 
+    
+ EXEC db_lookup.dbo.sp_WhoIsActive
+ 	@show_sleeping_spids = 
 ```
 
-OpenVPN connections are also logged in syslog, each day is archived and kept for 7 days. The archives for days 2-7 previous are gz compressed.  Use `grep` or `zgrep`, searching on user name or "openvpn" - [[./Text & Log Search & Edit#grep tail|Text & Log Search & Edit > grep tail]]
-
-## OpenVPN Connection Attempts Log
-OpenVPN's handling of traffic - attempts to connect via openvpn - are logged in openvpn.log
+## Current Connections
+```SQL
+SELECT
+DEC.session_id
+,DES.login_time
+,DES.login_name
+,DES.host_name
+,DES.program_name
+,DES.client_interface_name
+,DES.status
+,DES.last_request_end_time
+,DES.last_request_end_time
+,DEC.protocol_type
+,DEC.auth_scheme
+FROM sys.dm_exec_sessions AS DES
+JOIN sys.dm_exec_connections AS DEC ON DEC.session_id = DES.session_id
+WHERE login_name <> 'NT AUTHORITY\SYSTEM'
+AND login_name <> 'rdsa'
+ORDER BY login_time;
 ```
-sudo tail -50 /var/log/openvpn/openvpn.log
-```
-Look for errors and fails.
-https://openvpn.net/community-resources/reference-manual-for-openvpn-2-4/
-https://openvpn.net/community-resources/how-to/#starting-up-the-vpn-and-testing-for-initial-connectivity
 
-## Port Activity
-install net-tools
-```
-sudo netstat -pnta
-```
-Shows programs listening on ports
-https://www.ionos.co.uk/digitalguide/server/tools/introduction-to-netstat/
 
- Look for openvpn on 0.0.0.0:443
+## Connections - past 44 days
+```SQL
+SELECT
+CONVERT(date, event_time, 108) as date_in
+,MIN(CAST(CONVERT(char(16), event_time, 20) as time(0))) as time_in
+,action_id as login_attempt
+,MAX(CAST(CONVERT(char(16), event_time, 20) as time(0))) as time_out
+,server_principal_name as login_name
+,client_ip
+FROM msdb.dbo.rds_fn_get_audit_file
+('D:\rdsdbdata\SQLAudit\Audit-Logins*.sqlaudit', default, default )
+WHERE server_principal_name <> 'NT AUTHORITY\SYSTEM'
+GROUP BY 
+	CONVERT(date, event_time, 108)
+	,server_principal_name
+	,action_id
+	,client_ip
+ORDER BY date_in DESC, time_in DESC
 ```
-sudo tcpdump -i eth0 -nn -s0 -v port 443
+
+Aggregated Successful Logins
+```SQL
+SELECT
+	login_name
+	,COUNT(*) as connections
+	,MAX(date_in) as most_recent_d
+	,MAX(time_in) as most_recent_t
+FROM (
+SELECT
+CONVERT(date, event_time, 108) as date_in
+,MIN(CAST(CONVERT(char(16), event_time, 20) as time(0))) as time_in
+,action_id as login_attempt
+,MAX(CAST(CONVERT(char(16), event_time, 20) as time(0))) as time_out
+,server_principal_name as login_name
+,client_ip
+FROM msdb.dbo.rds_fn_get_audit_file
+('D:\rdsdbdata\SQLAudit\Audit-Logins*.sqlaudit', default, default )
+WHERE server_principal_name <> 'NT AUTHORITY\SYSTEM'
+GROUP BY 
+	CONVERT(date, event_time, 108)
+	,server_principal_name
+	,action_id
+	,client_ip
+) as t
+WHERE t.login_attempt = 'LGIS'
+GROUP BY login_name
+ORDER BY most_recent_d DESC, most_recent_t DESC
 ```
-Will show the traffic arriving on port 443 - attempt to connect via openvpn and look for IP, errors and failure messages
--i : interface. Not required if there is only one network adapter.  
--nn : -n do not resolve hostnames. -nn do not resolve hostnames or ports. 
--s0 : Snap length, size of the packet to capture. `-s0` to capture all the traffic. 
--v : Verbose, using (**-v**) or (**-vv**) 
-port 443 : port filter
-host 10.10.1.1: IP address (destinationa and source)
-https://hackertarget.com/tcpdump-examples/
 
-## SSH Direct Connection
-To enable direct SSH and to use of ping, tracert etc
-Look up IP address and edit VPN-02 Security Group Inbound to:
->All traffic on < IP>
+[https://cprovolt.wordpress.com/2013/08/02/sql-server-audit-action_id-list/](https://cprovolt.wordpress.com/2013/08/02/sql-server-audit-action_id-list/)
 
-PuTTY onto `35.178.10.20` port 22
-Remove rule from Security Group when finished.
+[https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Appendix.SQLServer.Options.Audit.html](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Appendix.SQLServer.Options.Audit.html)
 
----
+
+http://whoisactive.com/
+
+
+
+
+
+
